@@ -1,44 +1,36 @@
 <?php
 // ======================================================
-// config.php — Global System Settings
+// Global System Configuration
 // ======================================================
 
-// Start session globally
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// ======================================================
-// ADMIN CREDENTIALS (Fallback if admin_account table fails)
-// ======================================================
-define('ADMIN_USERNAME', 'machu');
-define('ADMIN_PASSWORD', 'admin123');
-define('ADMIN_FULLNAME', 'Mathew JG S. Payopelin');
-
-// ======================================================
-// DATABASE CONNECTION SETTINGS
-// ======================================================
+// DATABASE ---------------------------------------------
 define('DB_HOST', '127.0.0.1');
-define('DB_NAME', 'old_alumni_db'); // <-- Your working database name
+define('DB_NAME', 'wmsu_alumni_db'); 
 define('DB_USER', 'root');
-define('DB_PASS', ''); // XAMPP default = empty password
+define('DB_PASS', '');
 
-// ======================================================
-// BASE URL (adjust to your actual folder name)
-// ======================================================
+// BASE URL ---------------------------------------------
 define('BASE_URL', '/cssAlumniDirectorySystem');
 
-// ======================================================
-// HELPER FUNCTION
-// ======================================================
+// SMTP CONFIG (GMAIL APP PASSWORD REQUIRED) -------------
+define('SMTP_HOST', 'smtp.gmail.com');
+define('SMTP_PORT', 587);
+define('SMTP_USERNAME', 'mathewpayopelin.payo.dev@gmail.com');
+define('SMTP_PASSWORD', 'csmz bhta oltn ctik');
+define('SMTP_FROM_EMAIL', 'mathewpayopelin.payo.dev@gmail.com');
+define('SMTP_FROM_NAME', 'WMSU Alumni Office');
+
+// Helper redirect
 function redirect($path) {
     header("Location: " . BASE_URL . $path);
     exit();
 }
 
-// ======================================================
-// GLOBAL PDO INSTANCE (optional use outside classes)
-// ======================================================
+// GLOBAL PDO (optional)
 try {
     $pdo = new PDO(
         "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
