@@ -1,168 +1,188 @@
 <?php
 // ==========================================================
-// pages/viewCurrentRecord.php — Enhanced Alumni Record View
+// pages/viewCurrentRecord.php — Enhanced Alumni Record View (FIXED)
 // ==========================================================
+require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/../classes/auth.php';
 
-$studentId = $_GET['student_id'] ?? null;
-if (!$studentId) {
-  echo "<p style='text-align:center; color:#dc3545;'>No student ID provided.</p>";
-  echo "<p style='text-align:center;'><a href='renewalVerification.php' class='back-btn'>← Back</a></p>";
-  exit;
-}
-
+Auth::requireLogin();
+$user = Auth::getUser();
 $pdo = Database::getPDO();
 
+// Get Alumni ID linked to the logged-in user
+$stmtAlumni = $pdo->prepare("SELECT id, student_id FROM alumni WHERE user_id = ? LIMIT 1");
+$stmtAlumni->execute([$user['id']]);
+$alumni = $stmtAlumni->fetch();
+
+if (!$alumni) {
+    echo "<p style='text-align:center; color:#dc3545;'>Alumni record not found for this user.</p>";
+    echo "<p style='text-align:center;'><a href='alumniLanding.php' class='back-btn'>← Back to Landing</a></p>";
+    exit;
+}
+$alumniId = $alumni['id'];
+$studentId = $alumni['student_id'];
+
 // ----------------------------------------------------------
-// 1️⃣ MAIN INFO (join colleges_alumni + alumni_info)
+// 1️⃣ MAIN INFO (alumni table + join for barangay name)
 // ----------------------------------------------------------
 $sqlMain = "
-  SELECT ca.*, ai.region, ai.province, ai.city_municipality, ai.barangay,
-         ai.birthday, ai.blood_type, ai.picture_path
-  FROM colleges_alumni ca
-  LEFT JOIN alumni_info ai ON ca.student_id = ai.student_id
-  WHERE ca.student_id = :student_id
+    SELECT 
+        a.*, 
+        CONCAT(b.name, ', ', c.name, ', ', p.name, ', ', r.name) AS full_address
+    FROM alumni a
+    LEFT JOIN barangays b ON a.barangay_id = b.id
+    LEFT JOIN cities c ON b.city_id = c.id
+    LEFT JOIN provinces p ON c.province_id = p.id
+    LEFT JOIN regions r ON p.region_id = r.id
+    WHERE a.id = :alumni_id
 ";
 $stmtMain = $pdo->prepare($sqlMain);
-$stmtMain->execute([':student_id' => $studentId]);
+$stmtMain->execute([':alumni_id' => $alumniId]);
 $main = $stmtMain->fetch();
 
-if (!$main) {
-  echo "<p style='text-align:center; color:#dc3545;'>Record not found for this Student ID.</p>";
-  echo "<p style='text-align:center;'><a href='renewalVerification.php' class='back-btn'>← Back</a></p>";
-  exit;
-}
+// ----------------------------------------------------------
+// 2️⃣ CONTACTS (contacts table for mobile/email)
+// ----------------------------------------------------------
+$sqlContacts = "SELECT type, value FROM contacts WHERE alumni_id = ?";
+$stmtContacts = $pdo->prepare($sqlContacts);
+$stmtContacts->execute([$alumniId]);
+$contacts = $stmtContacts->fetchAll(PDO::FETCH_KEY_PAIR); // [type => value]
 
 // ----------------------------------------------------------
-// 2️⃣ EDUCATION HISTORY (alumni_edu_bg)
+// 3️⃣ ACADEMIC RECORDS (for Course and Grad Year)
 // ----------------------------------------------------------
-$sqlEdu = "SELECT * FROM alumni_edu_bg WHERE student_id = :student_id ORDER BY id ASC";
+$sqlAcademic = "
+    SELECT co.name AS course_name, ar.year_graduated, cl.name AS college_name 
+    FROM academic_records ar
+    JOIN courses co ON ar.course_id = co.id
+    JOIN colleges cl ON ar.college_id = cl.id
+    WHERE ar.alumni_id = ?
+    ORDER BY ar.year_graduated DESC
+";
+$stmtAcademic = $pdo->prepare($sqlAcademic);
+$stmtAcademic->execute([$alumniId]);
+$academic = $stmtAcademic->fetch(); // Assuming one primary degree for display
+
+// ----------------------------------------------------------
+// 4️⃣ EDUCATION HISTORY (education_history table)
+// ----------------------------------------------------------
+$sqlEdu = "SELECT * FROM education_history WHERE alumni_id = :alumni_id ORDER BY level DESC";
 $stmtEdu = $pdo->prepare($sqlEdu);
-$stmtEdu->execute([':student_id' => $studentId]);
+$stmtEdu->execute([':alumni_id' => $alumniId]);
 $eduHistory = $stmtEdu->fetchAll();
 
 // ----------------------------------------------------------
-// 3️⃣ EMPLOYMENT HISTORY (alumni_emp_record)
+// 5️⃣ EMPLOYMENT HISTORY (employment_records table)
 // ----------------------------------------------------------
-$sqlEmp = "SELECT * FROM alumni_emp_record WHERE student_id = :student_id ORDER BY id DESC";
+$sqlEmp = "SELECT * FROM employment_records WHERE alumni_id = :alumni_id ORDER BY start_date DESC";
 $stmtEmp = $pdo->prepare($sqlEmp);
-$stmtEmp->execute([':student_id' => $studentId]);
+$stmtEmp->execute([':alumni_id' => $alumniId]);
 $empHistory = $stmtEmp->fetchAll();
 
 // ----------------------------------------------------------
-// 4️⃣ EMERGENCY CONTACT (alumni_emer_contact)
+// 6️⃣ EMERGENCY CONTACT (emergency_contacts table)
 // ----------------------------------------------------------
-$sqlEmer = "SELECT * FROM alumni_emer_contact WHERE student_id = :student_id LIMIT 1";
+$sqlEmer = "SELECT * FROM emergency_contacts WHERE alumni_id = :alumni_id LIMIT 1";
 $stmtEmer = $pdo->prepare($sqlEmer);
-$stmtEmer->execute([':student_id' => $studentId]);
+$stmtEmer->execute([':alumni_id' => $alumniId]);
 $emer = $stmtEmer->fetch();
+
+// ----------------------------------------------------------
+// 7️⃣ ATTACHMENT / PROFILE PIC
+// ----------------------------------------------------------
+$sqlPic = "SELECT path FROM attachments WHERE alumni_id = ? AND type = 'photo' LIMIT 1";
+$stmtPic = $pdo->prepare($sqlPic);
+$stmtPic->execute([$alumniId]);
+$picPath = $stmtPic->fetchColumn();
+
 ?>
-
 <div class="record-container">
-  <h1>Current Alumni Record</h1>
-  <p class="instruction">Below is your information and history from our records.</p>
+  <h1>Current Alumni Record</h1>
+  <p class="instruction">Below is your information and history from our records.</p>
 
-  <!-- PERSONAL INFORMATION -->
-  <div class="record-card">
-    <h2>Personal Information</h2>
-    <div class="info-section">
-      <?php if (!empty($main['picture_path'])): ?>
-        <img src="../<?= htmlspecialchars($main['picture_path']) ?>" alt="2x2 Photo" class="profile-pic">
-      <?php endif; ?>
-      <ul>
-        <li><strong>Student ID:</strong> <?= htmlspecialchars($main['student_id']) ?></li>
-        <li><strong>Full Name:</strong> <?= htmlspecialchars($main['surname'] . ', ' . $main['given_name'] . ' ' . ($main['middle_name'] ?? '')) ?></li>
-        <li><strong>Course:</strong> <?= htmlspecialchars($main['course'] ?? 'N/A') ?></li>
-        <li><strong>Year Graduated:</strong> <?= htmlspecialchars($main['year_graduated'] ?? 'N/A') ?></li>
-        <li><strong>Batch Name:</strong> <?= htmlspecialchars($main['batch_name'] ?? 'N/A') ?></li>
-        <li><strong>Address:</strong> <?= htmlspecialchars(($main['region'] ?? '') . ', ' . ($main['province'] ?? '') . ', ' . ($main['city_municipality'] ?? '') . ', ' . ($main['barangay'] ?? '')) ?></li>
-        <li><strong>Contact Number:</strong> <?= htmlspecialchars($main['contact_number'] ?? '') ?></li>
-        <li><strong>Email:</strong> <?= htmlspecialchars($main['email'] ?? '') ?></li>
-        <li><strong>Birthday:</strong> <?= htmlspecialchars($main['birthday'] ?? '') ?></li>
-        <li><strong>Blood Type:</strong> <?= htmlspecialchars($main['blood_type'] ?? '') ?></li>
-      </ul>
-    </div>
-  </div>
+    <div class="record-card">
+    <h2>Personal Information</h2>
+    <div class="info-section">
+      <?php if (!empty($picPath)): ?>
+        <img src="../<?= htmlspecialchars($picPath) ?>" alt="2x2 Photo" class="profile-pic">
+      <?php endif; ?>
+      <ul>
+        <li><strong>Student ID:</strong> <?= htmlspecialchars($studentId) ?></li>
+        <li><strong>Full Name:</strong> <?= htmlspecialchars($main['surname'] . ', ' . $main['given_name'] . ' ' . ($main['middle_name'] ?? '')) ?></li>
+        <li><strong>College/Course:</strong> <?= htmlspecialchars(($academic['college_name'] ?? 'N/A') . ' / ' . ($academic['course_name'] ?? 'N/A')) ?></li>
+        <li><strong>Year Graduated:</strong> <?= htmlspecialchars($academic['year_graduated'] ?? 'N/A') ?></li>
+        <li><strong>Address:</strong> <?= htmlspecialchars($main['full_address'] ?? 'N/A') ?></li>
+        <li><strong>Mobile Contact:</strong> <?= htmlspecialchars($contacts['mobile'] ?? 'N/A') ?></li>
+        <li><strong>Email:</strong> <?= htmlspecialchars($user['email']) ?></li>
+        <li><strong>Birthday:</strong> <?= htmlspecialchars($main['birthday'] ?? 'N/A') ?></li>
+        <li><strong>Blood Type:</strong> <?= htmlspecialchars($main['blood_type'] ?? 'N/A') ?></li>
+      </ul>
+    </div>
+  </div>
 
-  <!-- EDUCATION HISTORY -->
-  <div class="record-card">
-    <h2>Educational Background</h2>
-    <?php if (empty($eduHistory)): ?>
-      <p>No education records found.</p>
-    <?php else: ?>
-      <table class="history-table">
-        <thead>
-          <tr><th>Level</th><th>School Name</th><th>Year Graduated</th></tr>
-        </thead>
-        <tbody>
-        <?php foreach ($eduHistory as $row): ?>
-          <?php
-            $entries = [
-              'Elementary' => [$row['elementary_school'], $row['elementary_yr']],
-              'Junior High' => [$row['junior_high_school'], $row['junior_high_yr']],
-              'Senior High' => [$row['senior_high_school'], $row['senior_high_yr']],
-              'Tertiary' => [$row['tertiary_school'], $row['tertiary_yr']],
-              'Graduate' => [$row['graduate_school'], $row['graduate_yr']]
-            ];
-          ?>
-          <?php foreach ($entries as $level => [$school, $year]): ?>
-            <?php if (!empty($school)): ?>
-              <tr>
-                <td><?= htmlspecialchars($level) ?></td>
-                <td><?= htmlspecialchars($school) ?></td>
-                <td><?= htmlspecialchars($year ?: '-') ?></td>
-              </tr>
-            <?php endif; ?>
-          <?php endforeach; ?>
-        <?php endforeach; ?>
-        </tbody>
-      </table>
-    <?php endif; ?>
-  </div>
+    <div class="record-card">
+    <h2>Educational Background</h2>
+    <?php if (empty($eduHistory)): ?>
+      <p>No education records found.</p>
+    <?php else: ?>
+      <table class="history-table">
+        <thead>
+          <tr><th>Level</th><th>School Name</th><th>Year Completed</th></tr>
+        </thead>
+        <tbody>
+        <?php foreach ($eduHistory as $row): ?>
+            <tr>
+                <td><?= htmlspecialchars(ucwords(str_replace('_', ' ', $row['level']))) ?></td>
+                <td><?= htmlspecialchars($row['school_name'] ?? '-') ?></td>
+                <td><?= htmlspecialchars($row['year_completed'] ?? '-') ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
 
-  <!-- EMPLOYMENT HISTORY -->
-  <div class="record-card">
-    <h2>Employment History</h2>
-    <?php if (empty($empHistory)): ?>
-      <p>No employment records found.</p>
-    <?php else: ?>
-      <table class="history-table">
-        <thead>
-          <tr><th>Company Name</th><th>Position</th><th>Address</th><th>Contact</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          <?php foreach ($empHistory as $emp): ?>
-            <tr class="<?= ($emp['status'] ?? '') === 'active' ? 'active-row' : 'inactive-row' ?>">
-              <td><?= htmlspecialchars($emp['company_name'] ?? '-') ?></td>
-              <td><?= htmlspecialchars($emp['position'] ?? '-') ?></td>
-              <td><?= htmlspecialchars($emp['company_address'] ?? '-') ?></td>
-              <td><?= htmlspecialchars($emp['company_contact'] ?? '-') ?></td>
-              <td><?= htmlspecialchars(ucfirst($emp['status'] ?? '')) ?></td>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    <?php endif; ?>
-  </div>
+    <div class="record-card">
+    <h2>Employment History</h2>
+    <p class="sub-instruction">Note: This view displays all recorded employment history.</p>
+    <?php if (empty($empHistory)): ?>
+      <p>No employment records found.</p>
+    <?php else: ?>
+      <table class="history-table">
+        <thead>
+          <tr><th>Company Name</th><th>Position</th><th>Address</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <?php foreach ($empHistory as $emp): ?>
+            <tr class="<?= ($emp['status'] ?? '') === 'active' ? 'active-row' : 'inactive-row' ?>">
+              <td><?= htmlspecialchars($emp['company_name'] ?? '-') ?></td>
+              <td><?= htmlspecialchars($emp['position'] ?? '-') ?></td>
+              <td><?= htmlspecialchars($emp['company_address'] ?? '-') ?></td>
+              <td><?= htmlspecialchars(ucfirst($emp['status'] ?? '')) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
 
-  <!-- EMERGENCY CONTACT -->
-  <div class="record-card">
-    <h2>Emergency Contact</h2>
-    <?php if (!$emer): ?>
-      <p>No emergency contact on record.</p>
-    <?php else: ?>
-      <ul>
-        <li><strong>Name:</strong> <?= htmlspecialchars($emer['emergency_name'] ?? '-') ?></li>
-        <li><strong>Address:</strong> <?= htmlspecialchars($emer['emergency_address'] ?? '-') ?></li>
-        <li><strong>Contact No.:</strong> <?= htmlspecialchars($emer['emergency_contact'] ?? '-') ?></li>
-      </ul>
-    <?php endif; ?>
-  </div>
+    <div class="record-card">
+    <h2>Emergency Contact</h2>
+    <?php if (!$emer): ?>
+      <p>No emergency contact on record.</p>
+    <?php else: ?>
+      <ul>
+        <li><strong>Name:</strong> <?= htmlspecialchars($emer['name'] ?? '-') ?></li>
+        <li><strong>Address:</strong> <?= htmlspecialchars($emer['address'] ?? '-') ?></li>
+        <li><strong>Contact No.:</strong> <?= htmlspecialchars($emer['phone'] ?? '-') ?></li>
+      </ul>
+    <?php endif; ?>
+  </div>
 
-  <!-- BUTTON -->
-  <div class="btn-group">
-    <a href="renewalForm.php?student_id=<?= urlencode($main['student_id']) ?>" class="renew-btn">← Back to Renewal Form</a>
-  </div>
+    <div class="btn-group">
+        <a href="alumniInfo.php?type=Renewal" class="renew-btn">Update Your Information / Renew</a>
+  </div>
 </div>
 
 <style>

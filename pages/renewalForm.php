@@ -1,22 +1,59 @@
 <?php
 // ==========================================================
-// pages/renewalForm.php — Alumni Renewal Form (Dynamic & Aligned)
+// pages/renewalForm.php — Alumni Renewal Form (Fixed Logic)
 // ==========================================================
+require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/../classes/auth.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+// 1. Check Login Status
+// If user is not logged in, send them to login page.
+if (!Auth::isLoggedIn()) {
+    header("Location: ../index.php");
+    exit;
 }
 
-$alumni = $_SESSION['form_data'] ?? [];
-$studentId = $_GET['student_id'] ?? ($alumni['student_id'] ?? null);
+$pdo = Database::getPDO();
+$user = Auth::getUser();
 
-if (!$studentId) {
-    echo "<p style='text-align:center;color:#dc3545;'>No student ID found. Please verify your email again.</p>";
-    echo "<p style='text-align:center;'><a href='renewalVerification.php' class='back-btn'>← Back to Verification</a></p>";
+// 2. Fetch Alumni Data from Database for the Logged-In User
+// This ensures the form is filled with their current live data
+$stmt = $pdo->prepare("SELECT * FROM alumni WHERE user_id = ? LIMIT 1");
+$stmt->execute([$user['id']]);
+$alumni = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Edge Case: User is logged in but has no alumni record yet
+if (!$alumni) {
+    // Determine the student ID (from User table or session if available)
+    $studentId = $_SESSION['student_id'] ?? ''; 
+} else {
+    $studentId = $alumni['student_id'];
+}
+
+// 3. Handle 'No Data' Scenario
+if (!$alumni && empty($studentId)) {
+    echo "<div style='max-width:600px; margin:50px auto; padding:20px; border:1px solid #dc3545; color:#721c24; background:#f8d7da; border-radius:5px; text-align:center;'>";
+    echo "<h3>Record Not Found</h3>";
+    echo "<p>We could not find an alumni record linked to this account.</p>";
+    echo "<a href='../index.php' style='display:inline-block; margin-top:10px; text-decoration:none; color:#721c24; font-weight:bold;'>&larr; Return to Dashboard</a>";
+    echo "</div>";
     exit;
 }
 ?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Alumni Renewal - WMSU</title>
+    <link rel="stylesheet" href="../assets/css/index.css">
+</head>
+<body style="background-color: #f4f6f9;">
+
+<div style="background:#b30000; color:white; padding:10px 20px; display:flex; justify-content:space-between; align-items:center;">
+    <span style="font-weight:bold;">WMSU Alumni Portal</span>
+    <a href="auth/logout.php" style="color:white; text-decoration:none; font-size:0.9em;">Logout</a>
+</div>
 
 <div class="renewal-container">
   <h1>CCS Alumni Renewal Form</h1>
@@ -25,7 +62,6 @@ if (!$studentId) {
   <form method="POST" action="../functions/renewalSubmit.php" class="renewal-form">
     <input type="hidden" name="student_id" value="<?= htmlspecialchars($studentId) ?>">
 
-    <!-- PERSONAL SECTION -->
     <fieldset>
       <legend>Personal Information</legend>
 
@@ -40,7 +76,7 @@ if (!$studentId) {
           <label for="given_name">First Name</label>
           <input type="text" id="given_name" name="given_name"
                  value="<?= htmlspecialchars($alumni['given_name'] ?? '') ?>"
-                 readonly>
+                 readonly style="background-color:#e9ecef; cursor:not-allowed;">
         </div>
       </div>
 
@@ -54,12 +90,11 @@ if (!$studentId) {
       <div class="form-group">
         <label for="email">Email Address</label>
         <input type="email" id="email" name="email"
-               value="<?= htmlspecialchars($alumni['email'] ?? '') ?>"
-               readonly>
+               value="<?= htmlspecialchars($user['email'] ?? ($alumni['email'] ?? '')) ?>"
+               readonly style="background-color:#e9ecef; cursor:not-allowed;">
       </div>
     </fieldset>
 
-    <!-- ADDRESS SECTION -->
     <fieldset>
       <legend>Address</legend>
       <div class="grid-2">
@@ -76,8 +111,7 @@ if (!$studentId) {
         <div class="form-group">
           <label>City / Municipality</label>
           <input type="text" name="city_municipality"
-                 value="<?= htmlspecialchars($alumni['city_municipality'] ?? '') ?>">
-        </div>
+                 value="<?= htmlspecialchars($alumni['city'] ?? '') ?>"> </div>
         <div class="form-group">
           <label>Barangay</label>
           <input type="text" name="barangay"
@@ -86,7 +120,6 @@ if (!$studentId) {
       </div>
     </fieldset>
 
-    <!-- EMPLOYMENT SECTION -->
     <fieldset>
       <legend>Employment Information</legend>
       <div class="two-col">
@@ -116,7 +149,6 @@ if (!$studentId) {
       </div>
     </fieldset>
 
-    <!-- EDUCATION ADDITION SECTION -->
     <fieldset>
       <legend>Additional Educational Background</legend>
       <p class="sub-instruction">If you have earned a new tertiary degree, you may add it below.</p>
@@ -135,7 +167,6 @@ if (!$studentId) {
       </div>
     </fieldset>
 
-    <!-- EMERGENCY CONTACT -->
     <fieldset>
       <legend>Emergency Contact</legend>
       <div class="two-col">
@@ -157,11 +188,9 @@ if (!$studentId) {
       </div>
     </fieldset>
 
-    <!-- SUBMIT BUTTON -->
     <div class="btn-group">
       <button type="submit" class="submit-btn">Submit Renewal</button>
-      <a href="renewalVerification.php" class="back-btn">← Back to Verification</a>
-    </div>
+      </div>
   </form>
 </div>
 
@@ -174,6 +203,7 @@ if (!$studentId) {
   border-radius: 10px;
   box-shadow: 0 0 10px rgba(0,0,0,0.1);
   font-family: Arial, sans-serif;
+  border-top: 5px solid #198754;
 }
 h1 {
   color: #198754;
@@ -188,17 +218,22 @@ h1 {
 .sub-instruction {
   color: #777;
   margin-bottom: 10px;
+  font-size: 0.9em;
 }
 fieldset {
-  border: 1px solid #198754;
+  border: 1px solid #c3e6cb;
   border-radius: 8px;
   padding: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  background-color: white;
 }
 legend {
-  color: #198754;
+  color: #157347;
   font-weight: bold;
   padding: 0 10px;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 0.5px;
 }
 .form-group {
   margin-bottom: 15px;
@@ -206,17 +241,24 @@ legend {
 label {
   display: block;
   font-weight: bold;
-  color: #198754;
+  color: #333;
   margin-bottom: 5px;
+  font-size: 0.95em;
 }
 input[type="text"],
 input[type="email"],
 input[type="tel"],
 input[type="number"] {
   width: 100%;
-  padding: 8px;
-  border: 1px solid #ccc;
+  padding: 10px;
+  border: 1px solid #ced4da;
   border-radius: 5px;
+  font-size: 1rem;
+}
+input:focus {
+    border-color: #198754;
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25);
 }
 .two-col {
   display: flex;
@@ -240,21 +282,27 @@ input[type="number"] {
   background: #198754;
   color: white;
   border: none;
-  padding: 10px 20px;
+  padding: 12px 30px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1em;
+  font-size: 1.1em;
+  font-weight: bold;
+  transition: background 0.2s;
 }
 .submit-btn:hover {
-  background: #157347;
+  background: #146c43;
 }
 .back-btn {
   display: inline-block;
   margin-left: 15px;
-  color: #198754;
+  color: #6c757d;
   text-decoration: none;
 }
 .back-btn:hover {
   text-decoration: underline;
+  color: #495057;
 }
 </style>
+
+</body>
+</html>

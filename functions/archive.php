@@ -1,23 +1,19 @@
 <?php
-// functions/archive.php
 session_start();
 require_once __DIR__ . '/../classes/auth.php';
 require_once __DIR__ . '/../classes/database.php';
 Auth::restrict();
 
 $pdo = Database::getPDO();
-$student_id = $_GET['id'] ?? '';
-if ($student_id === '') die("Invalid student ID.");
+$sid = $_GET['id'] ?? '';
 
-// ✅ Archive alumni — set status = 'archived'
-$stmt = $pdo->prepare("
-    UPDATE alumni_info
-    SET status = 'archived',
-        validated_date = NOW()
-    WHERE student_id = :student_id
-");
-$stmt->execute([':student_id' => $student_id]);
+if ($sid) {
+    $stmt = $pdo->prepare("SELECT u.id FROM users u JOIN alumni a ON u.id = a.user_id WHERE a.student_id = ?");
+    $stmt->execute([$sid]);
+    $uid = $stmt->fetchColumn();
 
-$_SESSION['flash_message'] = "🗃️ Alumni record ($student_id) moved to archive.";
+    if ($uid) {
+        $pdo->prepare("UPDATE users SET status = 'archived' WHERE id = ?")->execute([$uid]);
+    }
+}
 header("Location: ../pages/adminDashboard.php");
-exit;

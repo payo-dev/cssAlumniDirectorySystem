@@ -1,30 +1,27 @@
 <?php
-// functions/approve.php
 session_start();
 require_once __DIR__ . '/../classes/auth.php';
 require_once __DIR__ . '/../classes/database.php';
-Auth::restrict();
+require_once __DIR__ . '/../classes/mailer.php';
+Auth::restrict('applications.approve');
 
 $pdo = Database::getPDO();
-$student_id = $_GET['id'] ?? '';
-if ($student_id === '') die("Invalid student ID.");
+$sid = $_GET['id'] ?? '';
 
-// Get admin name
-$adminName = $_SESSION['admin_fullname'] ?? $_SESSION['admin_username'] ?? 'Administrator';
+if ($sid) {
+    // Get User ID from Alumni ID
+    $stmt = $pdo->prepare("SELECT u.id, u.email, u.display_name FROM users u JOIN alumni a ON u.id = a.user_id WHERE a.student_id = ?");
+    $stmt->execute([$sid]);
+    $user = $stmt->fetch();
 
-// ✅ Approve alumni — set status = 'active'
-$stmt = $pdo->prepare("
-    UPDATE alumni_info
-    SET status = 'active',
-        validated_by = :validated_by,
-        validated_date = NOW()
-    WHERE student_id = :student_id
-");
-$stmt->execute([
-    ':validated_by' => $adminName,
-    ':student_id' => $student_id
-]);
-
-$_SESSION['flash_message'] = "✅ Alumni record ($student_id) approved successfully.";
+    if ($user) {
+        // Update Status
+        $pdo->prepare("UPDATE users SET status = 'approved', approved_at = NOW() WHERE id = ?")->execute([$user['id']]);
+        $pdo->prepare("UPDATE applications SET status = 'active' WHERE alumni_id = (SELECT id FROM alumni WHERE student_id = ?)")->execute([$sid]);
+        
+        // Notify
+        $m = new Mailer();
+        $m->sendNotification($user['email'], "Your account has been APPROVED. You may now login.");
+    }
+}
 header("Location: ../pages/adminDashboard.php");
-exit;

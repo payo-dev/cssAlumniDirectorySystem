@@ -6,46 +6,112 @@ require_once __DIR__ . '/../../classes/auth.php';
 $token = $_GET['token'] ?? '';
 $ok = false;
 $message = '';
+$registered = $_GET['registered'] ?? 0;
+$email = $_GET['email'] ?? '';
 
-if ($token) {
+if ($registered) {
+    // Just showing the "Please check your email" message
+    $message = "Registration successful! We have sent a verification link to <strong>" . htmlspecialchars($email) . "</strong>.<br>Please check your inbox (and spam folder).";
+    $heading = "Check Your Email";
+    $icon = "✉️";
+    $color = "#004085"; // Blue
+    $bg = "#cce5ff";
+} elseif ($token) {
+    // Actually trying to verify
     if (Auth::verifyToken($token)) {
         $ok = true;
-        $message = 'Your email has been verified. You can now sign in.';
+        $heading = "Email Verified!";
+        $message = "Thank you! Your account has been successfully verified. You may now sign in.";
+        $icon = "✅";
+        $color = "#155724"; // Green
+        $bg = "#d4edda";
     } else {
-        $message = 'Verification failed or token expired. Please request a new verification email.';
+        $heading = "Verification Failed";
+        $message = "This link is invalid or has already been used.";
+        $icon = "❌";
+        $color = "#721c24"; // Red
+        $bg = "#f8d7da";
     }
 } else {
-    $message = 'No verification token provided.';
+    $heading = "Error";
+    $message = "No token provided.";
+    $icon = "⚠️";
+    $color = "#856404"; // Yellow
+    $bg = "#fff3cd";
 }
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Email Verification — WMSU Alumni</title>
-  <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/styles.css">
-  <style>
-    .verifyBox { max-width:720px; margin:60px auto; background:#fff; padding:26px; border-radius:8px; border-left:6px solid #b30000; box-shadow:0 6px 20px rgba(0,0,0,0.06); font-family:Arial, sans-serif; }
-    .ok { background:#eefaf0; color:#157347; padding:12px; border-radius:6px; border:1px solid #d4f5dd; }
-    .fail { background:#fff0f0; color:#b30000; padding:12px; border-radius:6px; border:1px solid #f5c2c2; }
-    .cta { margin-top:14px; }
-    .btn { padding:10px 14px; border-radius:6px; text-decoration:none; color:#fff; background:#b30000; font-weight:700; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Email Verification - WMSU Alumni</title>
+    <link rel="stylesheet" href="../../assets/css/index.css">
+    <style>
+        body {
+            background-image: 
+                linear-gradient(to top, rgba(139, 0, 0, 0.9) 0%, rgba(139, 0, 0, 0.1) 100%),
+                url('../../assets/images/default-bg.jpg');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .verify-box {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border-top: 5px solid #b30000;
+        }
+        .status-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+        .message-box {
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            background-color: <?= $bg ?>;
+            color: <?= $color ?>;
+            border: 1px solid <?= $color ?>;
+        }
+        .btn-home {
+            display: inline-block;
+            background-color: #b30000;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .btn-home:hover {
+            background-color: #8a0000;
+        }
+    </style>
 </head>
-<body class="default-program-bg">
-  <div class="mainContainer">
-    <div class="verifyBox">
-      <h2 style="color:#b30000;">WMSU Alumni — Email Verification</h2>
-      <?php if ($ok): ?>
-        <div class="ok"><?= htmlspecialchars($message) ?></div>
-        <div class="cta"><a href="<?= BASE_URL ?>/pages/auth/login.php" class="btn">Sign in</a></div>
-      <?php else: ?>
-        <div class="fail"><?= htmlspecialchars($message) ?></div>
-        <div style="margin-top:12px;">
-          <a href="<?= BASE_URL ?>/pages/auth/login.php">← Back to login</a>
+<body>
+
+    <div class="verify-box">
+        <span class="status-icon"><?= $icon ?></span>
+        <h1 style="color: #333; margin-bottom: 10px;"><?= $heading ?></h1>
+        
+        <div class="message-box">
+            <?= $message ?>
         </div>
-      <?php endif; ?>
+
+        <?php if ($ok || !$registered): ?>
+            <a href="../../index.php" class="btn-home">Go to Login</a>
+        <?php else: ?>
+             <a href="../../index.php" style="color:#666; text-decoration:none;">&larr; Return to Home</a>
+        <?php endif; ?>
     </div>
-  </div>
+
 </body>
 </html>

@@ -1,205 +1,306 @@
 <?php
-// ==========================================================
-// pages/reviewSubmit.php — Final Review & Submission Page
-// ==========================================================
+// File: pages/reviewSubmit.php
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../classes/database.php';
+require_once __DIR__ . '/../classes/auth.php';
 
-// Session already started in index.php
-$form = $_SESSION['form_data'] ?? [];
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+Auth::requireLogin();
+
+$user = Auth::getUser();
+$pdo = Database::getPDO();
+
+// 1. GET COLLEGE CONTEXT
+$college_id = $_SESSION['selected_college'] ?? 0;
+$college_name = "Western Mindanao State University"; 
+$college_code = "";
+
+// Check DB linkage
+$stmt = $pdo->prepare("
+    SELECT ar.college_id, c.name as college_name, c.code as college_code
+    FROM academic_records ar 
+    JOIN colleges c ON ar.college_id = c.id 
+    JOIN alumni a ON ar.alumni_id = a.id 
+    WHERE a.user_id = ? 
+    LIMIT 1
+");
+$stmt->execute([$user['id']]);
+$linked_data = $stmt->fetch();
+
+if ($linked_data) {
+    $college_id = $linked_data['college_id'];
+    $college_name = $linked_data['college_name'];
+    $college_code = $linked_data['college_code'];
+} elseif ($college_id) {
+    $stmt = $pdo->prepare("SELECT name, code FROM colleges WHERE id = ?");
+    $stmt->execute([$college_id]);
+    $col = $stmt->fetch();
+    if ($col) {
+        $college_name = $col['name'];
+        $college_code = $col['code'];
+    }
+}
+
+// 2. GET FORM DATA
+$form = $_SESSION['app_data'] ?? [];
 
 if (empty($form)) {
-  echo "<p style='text-align:center; color:#dc3545;'>No form data found. Please fill out the previous sections first.</p>";
-  exit;
+    header("Location: alumniInfo.php");
+    exit;
 }
+
+// 3. FETCH STATIC DATA (Name, ID) for display
+$stmt = $pdo->prepare("SELECT * FROM alumni WHERE user_id = ?");
+$stmt->execute([$user['id']]);
+$alumni = $stmt->fetch();
+
+// --- DYNAMIC STYLES ---
+$bg_image = 'default-bg.jpg';
+$border_color = '#b30000'; // Default Red
+$bg_gradient = 'linear-gradient(to top, rgba(139, 0, 0, 0.9) 0%, rgba(139, 0, 0, 0.1) 100%)';
+
+$code_upper = strtoupper($college_code);
+if ($code_upper === 'CCS') {
+    $bg_image = 'ccs-bg.jpg';
+    $border_color = '#006400';
+    $bg_gradient = 'linear-gradient(to top, rgba(0, 80, 0, 0.9) 0%, rgba(0, 80, 0, 0.1) 100%)';
+} elseif ($code_upper === 'CN') {
+    $bg_image = 'cn-bg.jpg';
+    $border_color = '#e91e63';
+    $bg_gradient = 'linear-gradient(to top, rgba(233, 30, 99, 0.9) 0%, rgba(233, 30, 99, 0.1) 100%)';
+}
+
+// GET FLASH MESSAGE
+$flash_error = $_SESSION['flash_error'] ?? '';
+unset($_SESSION['flash_error']);
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Review & Submit - New Application</title>
+    <link rel="stylesheet" href="../assets/css/index.css">
+    <style>
+        body { 
+            background-image: <?= $bg_gradient ?>, url('../assets/images/<?= $bg_image ?>');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            overflow-y: auto; 
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.2);
+            z-index: -1;
+        }
+        .form-container { max-width: 900px; margin: 40px auto; padding: 0 20px; position: relative; z-index: 1; }
+        .form-card {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            border-top: 5px solid <?= $border_color ?>; 
+        }
+        
+        /* Step Progress */
+        .step-progress {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        .step { font-size: 0.9rem; color: #999; font-weight: 600; }
+        .step.active { color: <?= $border_color ?>; }
 
-<div class="review-container">
-  <h1>Review Your Application</h1>
-  <p class="instruction">Please review your complete application before submitting. You may go back to edit any section if needed.</p>
+        /* Review Sections */
+        .review-section {
+            margin-bottom: 30px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .review-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            font-weight: 700;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .edit-link {
+            font-size: 0.85em;
+            color: <?= $border_color ?>;
+            text-decoration: none;
+        }
+        .edit-link:hover { text-decoration: underline; }
+        
+        .review-content { padding: 20px; }
+        .review-row {
+            display: flex;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #f9f9f9;
+            padding-bottom: 5px;
+        }
+        .review-label {
+            flex: 0 0 180px;
+            font-weight: 600;
+            color: #666;
+            font-size: 0.95em;
+        }
+        .review-value {
+            flex: 1;
+            color: #333;
+            font-size: 0.95em;
+        }
 
-  <!-- ========================== -->
-  <!-- PERSONAL INFORMATION CARD -->
-  <!-- ========================== -->
-  <div class="review-card">
-    <h2>Personal Information</h2>
-    <ul>
-      <li><strong>Student ID:</strong> <?= htmlspecialchars($form['student_id'] ?? '') ?></li>
-      <li><strong>Full Name:</strong> <?= htmlspecialchars(($form['surname'] ?? '') . ', ' . ($form['given_name'] ?? '') . ' ' . ($form['middle_name'] ?? '')) ?></li>
-      <li><strong>Course:</strong> <?= htmlspecialchars($form['course'] ?? '') ?></li>
-      <li><strong>Year Graduated:</strong> <?= htmlspecialchars($form['year_graduated'] ?? '') ?></li>
-      <li><strong>Batch:</strong> <?= htmlspecialchars($form['batch_name'] ?? '') ?></li>
-      <li><strong>Address:</strong>
-        <?= htmlspecialchars(($form['region'] ?? '') . ', ' . ($form['province'] ?? '') . ', ' . ($form['city_municipality'] ?? '') . ', ' . ($form['barangay'] ?? '')) ?>
-      </li>
-      <li><strong>Contact No.:</strong> <?= htmlspecialchars($form['contact_number'] ?? '') ?></li>
-      <li><strong>Email:</strong> <?= htmlspecialchars($form['email'] ?? '') ?></li>
-      <li><strong>Birthday:</strong> <?= htmlspecialchars($form['birthday'] ?? '') ?></li>
-      <li><strong>Blood Type:</strong> <?= htmlspecialchars($form['blood_type'] ?? '') ?></li>
-    </ul>
-  </div>
+        .btn-submit {
+            background-color: #28a745; /* Green for submit action */
+            color: white;
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+            box-shadow: 0 4px 6px rgba(40, 167, 69, 0.2);
+        }
+        .btn-submit:hover { background-color: #218838; }
+        
+        .btn-back { background-color: transparent; border: 1px solid #ccc; color: #666; padding: 12px 20px; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
+        .btn-back:hover { background-color: #f0f0f0; color: #333; }
 
-  <!-- ========================== -->
-  <!-- EDUCATIONAL BACKGROUND -->
-  <!-- ========================== -->
-  <div class="review-card">
-    <h2>Educational Background</h2>
-    <ul>
-      <li><strong>Elementary:</strong> <?= htmlspecialchars($form['elemSchool'] ?? '') ?> (<?= htmlspecialchars($form['elemYear'] ?? '') ?>)</li>
-      <li><strong>Junior High:</strong> <?= htmlspecialchars($form['hsSchool'] ?? '') ?> (<?= htmlspecialchars($form['hsYear'] ?? '') ?>)</li>
-      <li><strong>Senior High:</strong> <?= htmlspecialchars($form['shSchool'] ?? '') ?> (<?= htmlspecialchars($form['shYear'] ?? '') ?>)</li>
-      <li><strong>Tertiary:</strong> <?= htmlspecialchars($form['degree'] ?? '') ?> (<?= htmlspecialchars($form['collegeYear'] ?? '') ?>)</li>
-      <li><strong>Graduate School:</strong> <?= htmlspecialchars($form['gradSchool'] ?? '') ?> (<?= htmlspecialchars($form['gradYear'] ?? '') ?>)</li>
-    </ul>
-  </div>
+        .profile-thumb {
+            width: 80px; height: 80px; border-radius: 50%; object-fit: cover;
+            border: 2px solid <?= $border_color ?>;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
 
-  <!-- ========================== -->
-  <!-- EMPLOYMENT RECORD -->
-  <!-- ========================== -->
-  <div class="review-card">
-    <h2>Employment Record</h2>
-    <ul>
-      <li><strong>Company Name:</strong> <?= htmlspecialchars($form['company_name'] ?? $form['companyName'] ?? '') ?></li>
-      <li><strong>Position:</strong> <?= htmlspecialchars($form['position'] ?? $form['jobTitle'] ?? '') ?></li>
-      <li><strong>Address:</strong> <?= htmlspecialchars($form['company_address'] ?? $form['companyAddress'] ?? '') ?></li>
-      <li><strong>Contact No.:</strong> <?= htmlspecialchars($form['company_contact'] ?? $form['companyContact'] ?? '') ?></li>
-    </ul>
-  </div>
+<div class="form-container">
+    <div class="form-card">
+        
+        <div style="text-align:center; margin-bottom:30px;">
+            <img src="../assets/images/logo1.png" alt="Logo" style="width:70px; margin-bottom:10px;">
+            <h2 style="margin:0; color:#333;">Review Application</h2>
+            <p style="color:#666; margin-top:5px;">Please review your details before submitting.</p>
+        </div>
 
-  <!-- ========================== -->
-  <!-- EMERGENCY CONTACT (OPTIONAL) -->
-  <!-- ========================== -->
-  <div class="review-card">
-    <h2>Emergency Contact (Optional)</h2>
-    <ul>
-      <li><strong>Name:</strong> <?= htmlspecialchars($form['emergency_name'] ?? $form['emergencyName'] ?? '') ?></li>
-      <li><strong>Address:</strong> <?= htmlspecialchars($form['emergency_address'] ?? $form['emergencyAddress'] ?? '') ?></li>
-      <li><strong>Contact No.:</strong> <?= htmlspecialchars($form['emergency_contact'] ?? $form['emergencyContact'] ?? '') ?></li>
-    </ul>
-  </div>
+        <div class="step-progress">
+            <span class="step">1. Personal Info</span>
+            <span class="step">2. Education</span>
+            <span class="step">3. Employment</span>
+            <span class="step">4. Emergency</span>
+            <span class="step active">5. Review</span>
+        </div>
 
-  <!-- ========================== -->
-  <!-- SUBMIT BUTTON -->
-  <!-- ========================== -->
-  <form action="/cssAlumniDirectorySystem/functions/submitForm.php" method="POST" class="submit-form">
-    <input type="hidden" name="student_id" value="<?= htmlspecialchars($form['student_id'] ?? '') ?>">
-    <input type="hidden" name="course" value="<?= htmlspecialchars($form['course'] ?? '') ?>">
-    <input type="hidden" name="year_graduated" value="<?= htmlspecialchars($form['year_graduated'] ?? '') ?>">
+        <?php if($flash_error): ?>
+            <div style="background:#f8d7da; color:#721c24; padding:15px; border-radius:5px; margin-bottom:20px; border:1px solid #f5c6cb;">
+                <strong>Error:</strong> <?= htmlspecialchars($flash_error) ?>
+            </div>
+        <?php endif; ?>
 
-    <button type="submit" class="submit-btn">✅ Submit Application</button>
-    <a href="../index.php" class="back-btn" onclick="return confirmBack();">← Go Back to Landing Page</a>
-  </form>
+        <form action="../functions/submitForm.php" method="POST">
+            
+            <div class="review-section">
+                <div class="review-header">
+                    Personal Information
+                    <a href="alumniInfo.php" class="edit-link">Edit</a>
+                </div>
+                <div class="review-content">
+                    <?php 
+                    // Logic to display the uploaded or default profile picture
+                    $pic_path = $form['profile_pic_path'] ?? '';
+                    $display_path = !empty($pic_path) ? '../' . htmlspecialchars($pic_path) : '../assets/images/default-avatar.png';
+                    ?>
+                    <div style="text-align:center; margin-bottom:15px;">
+                        <img src="<?= $display_path ?>" class="profile-thumb" alt="Profile Pic">
+                    </div>
+
+                    <div class="review-row"><span class="review-label">Full Name:</span> <span class="review-value"><?= htmlspecialchars($alumni['given_name'] . ' ' . $alumni['middle_name'] . ' ' . $alumni['surname']) ?></span></div>
+                    <div class="review-row"><span class="review-label">Student ID:</span> <span class="review-value"><?= htmlspecialchars($alumni['student_id']) ?></span></div>
+                    <div class="review-row"><span class="review-label">Birth Date:</span> <span class="review-value"><?= htmlspecialchars($form['birthday'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Sex:</span> <span class="review-value"><?= htmlspecialchars($form['sex'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Civil Status:</span> <span class="review-value"><?= htmlspecialchars($form['civil_status'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Mobile:</span> <span class="review-value"><?= htmlspecialchars($form['mobile_number'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Email:</span> <span class="review-value"><?= htmlspecialchars($user['email']) ?></span></div>
+                    <div class="review-row"><span class="review-label">Address:</span> <span class="review-value">
+                        <?= htmlspecialchars($form['address_street'] ?? '') ?>, 
+                        <?= htmlspecialchars($form['barangay'] ?? '') ?>, 
+                        <?= htmlspecialchars($form['city'] ?? '') ?>, 
+                        <?= htmlspecialchars($form['province'] ?? '') ?> 
+                        (<?= htmlspecialchars($form['zip_code'] ?? '') ?>)
+                    </span></div>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <div class="review-header">
+                    Educational Background
+                    <a href="educationalBackground.php" class="edit-link">Edit</a>
+                </div>
+                <div class="review-content">
+                    <div class="review-row"><span class="review-label">Elementary:</span> <span class="review-value"><?= htmlspecialchars($form['elem_school'] ?? '') ?> (<?= htmlspecialchars($form['elem_year'] ?? '') ?>)</span></div>
+                    <div class="review-row"><span class="review-label">Junior High:</span> <span class="review-value"><?= htmlspecialchars($form['jhs_school'] ?? '') ?> (<?= htmlspecialchars($form['jhs_year'] ?? '') ?>)</span></div>
+                    <div class="review-row"><span class="review-label">Senior High:</span> <span class="review-value"><?= htmlspecialchars($form['shs_school'] ?? '') ?> (<?= htmlspecialchars($form['shs_year'] ?? '') ?>)</span></div>
+                    <div class="review-row"><span class="review-label">Tertiary:</span> <span class="review-value"><?= htmlspecialchars($form['tertiary_school'] ?? '') ?> (<?= htmlspecialchars($form['tertiary_year'] ?? '') ?>)</span></div>
+                    <?php if(!empty($form['grad_school'])): ?>
+                    <div class="review-row"><span class="review-label">Graduate:</span> <span class="review-value"><?= htmlspecialchars($form['grad_school']) ?> (<?= htmlspecialchars($form['grad_year'] ?? '') ?>)</span></div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <div class="review-header">
+                    Employment Record
+                    <a href="employmentRecord.php" class="edit-link">Edit</a>
+                </div>
+                <div class="review-content">
+                    <div class="review-row"><span class="review-label">Status:</span> <span class="review-value"><?= htmlspecialchars($form['employment_status'] ?? '') ?></span></div>
+                    <?php if(($form['employment_status'] ?? '') !== 'Unemployed'): ?>
+                        <div class="review-row"><span class="review-label">Company:</span> <span class="review-value"><?= htmlspecialchars($form['company_name'] ?? '') ?></span></div>
+                        <div class="review-row"><span class="review-label">Position:</span> <span class="review-value"><?= htmlspecialchars($form['position'] ?? '') ?></span></div>
+                        <div class="review-row"><span class="review-label">Address (Company):</span> <span class="review-value"><?= htmlspecialchars($form['company_address'] ?? '') ?></span></div>
+                        <div class="review-row"><span class="review-label">Contact (Company):</span> <span class="review-value"><?= htmlspecialchars($form['company_contact'] ?? '') ?></span></div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="review-section">
+                <div class="review-header">
+                    Emergency Contact
+                    <a href="emergencyContact.php" class="edit-link">Edit</a>
+                </div>
+                <div class="review-content">
+                    <div class="review-row"><span class="review-label">Name:</span> <span class="review-value"><?= htmlspecialchars($form['emergency_name'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Contact:</span> <span class="review-value"><?= htmlspecialchars($form['emergency_contact'] ?? '') ?></span></div>
+                    <div class="review-row"><span class="review-label">Address:</span> <span class="review-value"><?= htmlspecialchars($form['emergency_address'] ?? '') ?></span></div>
+                </div>
+            </div>
+
+            <input type="hidden" name="alumni_id" value="<?= htmlspecialchars($alumni['id']) ?>">
+
+            <div style="display:flex; justify-content:space-between; margin-top:30px; align-items:center;">
+                <a href="emergencyContact.php" class="btn-back" style="text-decoration:none;">&larr; Back</a>
+                <div style="flex:1; margin-left:20px;">
+                    <button type="submit" class="btn-submit">✅ Submit Application</button>
+                </div>
+            </div>
+
+        </form>
+    </div>
 </div>
 
-<script>
-function confirmBack() {
-  return confirm("Go back to the Landing Page? The form will not be saved unless you submit it.");
-}
-</script>
-
-<style>
-/* ========================== */
-/* 🎨 Green-Themed Review Page */
-/* ========================== */
-.review-container {
-  max-width: 900px;
-  margin: 40px auto;
-  background: #f8fff8;
-  padding: 30px;
-  border-radius: 10px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.1);
-  font-family: Arial, sans-serif;
-}
-
-.review-container h1 {
-  color: #198754;
-  text-align: center;
-  font-size: 1.8em;
-  margin-bottom: 10px;
-}
-
-.instruction {
-  text-align: center;
-  color: #555;
-  margin-bottom: 25px;
-}
-
-.review-card {
-  background: #ffffff;
-  border-left: 6px solid #198754;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 0 5px rgba(0,0,0,0.05);
-}
-
-.review-card h2 {
-  color: #198754;
-  margin-bottom: 10px;
-  font-size: 1.2em;
-}
-
-.review-card ul {
-  list-style: none;
-  padding-left: 0;
-  margin: 0;
-}
-
-.review-card li {
-  padding: 5px 0;
-  border-bottom: 1px solid #eaeaea;
-}
-
-.review-card li strong {
-  color: #198754;
-}
-
-.submit-form {
-  text-align: center;
-  margin-top: 30px;
-}
-
-.submit-btn {
-  background: #198754;
-  color: white;
-  border: none;
-  padding: 12px 30px;
-  border-radius: 6px;
-  font-size: 1.1em;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.submit-btn:hover {
-  background: #157347;
-}
-
-.back-btn {
-  display: inline-block;
-  margin-top: 15px;
-  color: #dc3545;
-  text-decoration: none;
-  font-weight: bold;
-}
-
-.back-btn:hover {
-  text-decoration: underline;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .review-container {
-    padding: 20px;
-  }
-
-  .review-card {
-    padding: 15px;
-  }
-
-  .review-card h2 {
-    font-size: 1.1em;
-  }
-
-  .submit-btn {
-    width: 100%;
-  }
-}
-</style>
+</body>
+</html>

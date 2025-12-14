@@ -1,0 +1,255 @@
+/* File: assets/css/index.css */
+
+/* =========================================
+   1. RESET & BASIC SETUP
+   ========================================= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden; /* Prevent scrolling on desktop */
+}
+
+/* =========================================
+   2. SPLIT LAYOUT (50/50)
+   ========================================= */
+.split-container {
+    display: flex;
+    height: 100%;
+    width: 100%;
+}
+
+/* --- LEFT SIDE: BACKGROUND IMAGE --- */
+.left-pane {
+    flex: 1; /* Takes 50% width */
+    background-size: cover;
+    background-position: center;
+    transition: background 0.5s ease-in-out;
+    position: relative;
+    /* Default Fallback */
+    background-color: #800000;
+}
+
+.left-pane::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.2); /* Slight overlay for contrast */
+}
+
+/* --- RIGHT SIDE: GRAYISH BACKGROUND --- */
+.right-pane {
+    flex: 1;
+    background-color: #f8f9fa; 
+    background-image: radial-gradient(#e9ecef 1px, transparent 1px);
+    background-size: 20px 20px; 
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    position: relative;
+}
+
+/* =========================================
+   3. CARD & CONTENT STYLING
+   ========================================= */
+.login-box {
+    width: 100%;
+    max-width: 450px;
+    text-align: center;
+    background: #ffffff;
+    padding: 45px 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    border: 3px solid #b30000; /* Full Red Border */
+}
+
+.logo {
+    width: 90px;
+    height: auto;
+    margin-bottom: 15px;
+}
+
+h1 {
+    color: #2c3e50;
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+/* Red Decorative Underline */
+.title-underline {
+    width: 50px;
+    height: 4px;
+    background: #b30000;
+    margin: 0 auto 20px auto;
+    border-radius: 2px;
+}
+
+p.subtitle {
+    color: #6c757d;
+    margin-bottom: 35px;
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+/* =========================================
+   4. FORM ELEMENTS
+   ========================================= */
+.form-group {
+    margin-bottom: 25px;
+    text-align: left;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    color: #495057;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+select {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: 1rem;
+    color: #333;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    background-color: #fff;
+    transition: all 0.3s ease;
+}
+
+/* PASSWORD SHOW/HIDE TOGGLE STYLES */
+.password-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    color: #6c757d;
+    outline: none;
+}
+
+.toggle-password:hover {
+    color: #b30000;
+}
+
+.toggle-password svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Select specific styling */
+select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23b30000%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat;
+    background-position: right 15px top 50%;
+    background-size: 12px auto;
+}
+
+input:focus, 
+select:focus {
+    border-color: #b30000;
+    box-shadow: 0 0 0 3px rgba(179, 0, 0, 0.1);
+    outline: none;
+}
+
+/* Button Styling */
+.btn-continue {
+    width: 100%;
+    padding: 16px;
+    background-color: #b30000;
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(179, 0, 0, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-decoration: none;
+    display: inline-block; /* Useful if using <a> tags as buttons */
+}
+
+.btn-continue:hover {
+    background-color: #8a0000;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(179, 0, 0, 0.3);
+}
+
+.btn-continue:active {
+    transform: translateY(0);
+}
+
+/* --- FOOTER LINKS --- */
+.footer-link {
+    margin-top: 30px;
+    font-size: 0.85rem;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    padding-top: 20px;
+    width: 100%;
+}
+
+.footer-link a {
+    color: #b30000;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.footer-link a:hover {
+    color: #800000;
+    text-decoration: underline;
+}
+
+/* =========================================
+   5. RESPONSIVE DESIGN
+   ========================================= */
+@media (max-width: 768px) {
+    body { overflow-y: auto; }
+    .split-container { flex-direction: column; }
+    .left-pane { flex: none; height: 280px; width: 100%; }
+    .right-pane {
+        flex: 1; 
+        padding: 40px 20px;
+        border-top-left-radius: 30px; 
+        border-top-right-radius: 30px;
+        margin-top: -30px; 
+        z-index: 10;
+        background-image: none;
+    }
+    .login-box { 
+        padding: 30px 20px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    }
+    h1 { font-size: 1.6rem; }
+}

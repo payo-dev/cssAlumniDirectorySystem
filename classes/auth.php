@@ -1,136 +1,125 @@
 <?php
 // File: classes/auth.php
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/database.php';
 
-class Auth
-{
-    public static function currentUser(): ?array
-    {
-        if (session_status() === PHP_SESSION_NONE) session_start();
-        if (empty($_SESSION['user_id'])) return null;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-        $pdo = Database::getPDO();
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = :id LIMIT 1");
-        $stmt->execute([':id' => $_SESSION['user_id']]);
-        return $stmt->fetch() ?: null;
-    }
+class Auth {
 
-    public static function login(string $email, string $password): bool
-    {
-        if (session_status() === PHP_SESSION_NONE) session_start();
-        $pdo = Database::getPDO();
-
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch();
-        if (!$user) return false;
-
-        if (!password_verify($password, $user['password_hash'])) return false;
-
-        // not verified (alumni-only)
-        if ((int)$user['is_verified'] === 0 && $user['role'] !== 'admin') {
-            $_SESSION['pending_verification_user'] = $user['id'];
-            return false;
-        }
-
-        // success
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['role']    = $user['role'];
-
-        $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = :id")
-            ->execute([':id' => $user['id']]);
-
-        return true;
-    }
-
-    public static function logout(): void
-    {
-        if (session_status() === PHP_SESSION_NONE) session_start();
-        session_unset();
-        session_destroy();
-    }
-
-    public static function createUser(array $data): int
-    {
-        $pdo = Database::getPDO();
-        $sql = "INSERT INTO users (email, password_hash, display_name, role, is_verified)
-                VALUES (:email, :password_hash, :display_name, :role, :is_verified)";
-        $stmt = $pdo->prepare($sql);
-
-        $stmt->execute([
-            ':email'        => $data['email'],
-            ':password_hash'=> password_hash($data['password'], PASSWORD_DEFAULT),
-            ':display_name' => $data['display_name'] ?? null,
-            ':role'         => $data['role'] ?? 'alumni',
-            ':is_verified'  => $data['is_verified'] ?? 0,
-        ]);
-
-        return (int)$pdo->lastInsertId();
-    }
-
-    public static function sendVerificationEmail(int $userId): bool
-    {
-        $pdo = Database::getPDO();
-        $token = bin2hex(random_bytes(24));
-
-        $pdo->prepare("UPDATE users SET verification_token = :token WHERE id = :id")
-            ->execute([':token' => $token, ':id' => $userId]);
-
-        $row = $pdo->query("SELECT email, display_name FROM users WHERE id = $userId")->fetch();
-        if (!$row) return false;
-
-        $url = BASE_URL . "/pages/auth/verify.php?token=" . urlencode($token);
-
-        $subject = "Verify Your Email — WMSU Alumni";
-        $body = "
-            <p>Hello <strong>" . htmlspecialchars($row['display_name'] ?? $row['email']) . "</strong>,</p>
-            <p>Please click the button below to verify your email:</p>
-            <p><a href='$url' style='padding:10px 20px; background:#28a745; color:white; text-decoration:none;'>Verify Email</a></p>
-            <p>If the button does not work, open this link:</p>
-            <p>$url</p>
-        ";
-
-        return Mailer::send($row['email'], $subject, $body);
-    }
-
-    public static function verifyToken(string $token): bool
-    {
-        $pdo = Database::getPDO();
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE verification_token = :token LIMIT 1");
-        $stmt->execute([':token' => $token]);
-
-        $row = $stmt->fetch();
-        if (!$row) return false;
-
-        $pdo->prepare("
-            UPDATE users 
-            SET is_verified = 1, verification_token = NULL, approved_at = NOW() 
-            WHERE id = :id
-        ")->execute([':id' => $row['id']]);
-
-        return true;
-    }
-
-    public static function isAdmin(): bool
-    {
-        $u = self::currentUser();
-        return $u && ($u['role'] === 'admin' || $u['role'] === 'both');
-    }
-
-    public static function isAlumni(): bool
-    {
-        $u = self::currentUser();
-        return $u && ($u['role'] === 'alumni' || $u['role'] === 'both');
-    }
-
-    public static function requireLogin(): void
-    {
-        if (session_status() === PHP_SESSION_NONE) session_start();
-        if (empty($_SESSION['user_id'])) {
-            header("Location: " . BASE_URL . "/pages/auth/login.php");
+    // --- 1. NEW: REQUIRE LOGIN (Missing Function Fixed) ---
+    // Used by: alumniInfo.php, educationalBackground.php, etc.
+    public static function requireLogin() {
+        if (!self::isLoggedIn()) {
+            header("Location: " . BASE_URL . "/index.php");
             exit;
         }
     }
+
+    // --- LOGIN FUNCTION ---
+    public static function login($email, $password) {
+        $pdo = Database::getPDO();
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+
+        if ($user && password_verify($password, $user['password_hash'])) {
+            
+            // Check verification
+            if ($user['is_verified'] == 0) return false; 
+
+            // 1. SET BASIC SESSION
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['email'] = $user['email'];
+            $_SESSION['display_name'] = $user['display_name'];
+            $_SESSION['permissions'] = []; // Default empty
+
+            // 2. FETCH PERMISSIONS (If Admin)
+            if ($user['role'] === 'admin' || $user['role'] === 'both') {
+                $sql = "SELECT p.code 
+                        FROM permissions p 
+                        JOIN admin_permissions ap ON p.id = ap.permission_id 
+                        JOIN admins a ON ap.admin_id = a.id 
+                        WHERE a.user_id = ?";
+                $stmtPerms = $pdo->prepare($sql);
+                $stmtPerms->execute([$user['id']]);
+                $_SESSION['permissions'] = $stmtPerms->fetchAll(PDO::FETCH_COLUMN);
+            }
+
+            // 3. AUTO-DETECT COLLEGE (If Alumni)
+            if ($user['role'] === 'alumni' || $user['role'] === 'both') {
+                try {
+                    $sql = "SELECT ar.college_id FROM academic_records ar JOIN alumni a ON ar.alumni_id = a.id WHERE a.user_id = ? ORDER BY ar.year_graduated DESC LIMIT 1";
+                    $stmtCollege = $pdo->prepare($sql);
+                    $stmtCollege->execute([$user['id']]);
+                    if ($cid = $stmtCollege->fetchColumn()) $_SESSION['selected_college'] = $cid;
+                } catch (Exception $e) {}
+            }
+            
+            // 4. UPDATE LAST LOGIN
+            $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+            
+            return true;
+        }
+        return false;
+    }
+
+    // --- PERMISSION CHECKER ---
+    public static function hasPermission($requiredPermission) {
+        if (!self::isLoggedIn()) return false;
+        
+        // If no specific permission required, just being logged in is enough
+        if ($requiredPermission === null) return true;
+
+        $myPerms = $_SESSION['permissions'] ?? [];
+        return in_array($requiredPermission, $myPerms);
+    }
+
+    // --- RESTRICT ACCESS (ADMIN PAGES) ---
+    public static function restrict($requiredPermission = null) {
+        // 1. Ensure Logged In
+        self::requireLogin(); 
+
+        // 2. Basic Admin Check
+        if (!self::isAdmin()) {
+            header("Location: " . BASE_URL . "/pages/selectAction.php");
+            exit;
+        }
+
+        // 3. Granular Permission Check
+        if ($requiredPermission !== null) {
+            if (!self::hasPermission($requiredPermission)) {
+                die("<h1>Access Denied</h1><p>You do not have permission to access this page.</p><a href='" . BASE_URL . "/pages/adminDashboard.php'>Back to Dashboard</a>");
+            }
+        }
+    }
+
+    // --- STANDARD HELPERS ---
+    public static function getUser() {
+        if (!self::isLoggedIn()) return null;
+        return [
+            'id' => $_SESSION['user_id'] ?? null,
+            'role' => $_SESSION['role'] ?? null,
+            'email' => $_SESSION['email'] ?? null,
+            'display_name' => $_SESSION['display_name'] ?? 'User',
+            'permissions' => $_SESSION['permissions'] ?? []
+        ];
+    }
+
+    public static function isLoggedIn() { return isset($_SESSION['user_id']); }
+    
+    public static function isAdmin() {
+        return self::isLoggedIn() && (($_SESSION['role'] ?? '') === 'admin' || ($_SESSION['role'] ?? '') === 'both');
+    }
+
+    public static function logout() {
+        session_unset();
+        session_destroy();
+        header("Location: " . BASE_URL . "/index.php");
+        exit;
+    }
 }
+?>

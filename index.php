@@ -1,170 +1,130 @@
 <?php
-// ==========================================================
-// index.php — Main Controller for Alumni Form Flow
-// ==========================================================
-session_start();
-
-// ✅ FIXED PATH — correct relative include
+// File: index.php (Global Login - FIXED)
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/classes/auth.php';
 require_once __DIR__ . '/classes/database.php';
 
-// --- SECTION CONFIG ---
-$sections = [
-  'alumni'     => ['title' => 'Alumni Info'],
-  'education'  => ['title' => 'Educational Background'],
-  'employment' => ['title' => 'Employment Record'],
-  'emergency'  => ['title' => 'Emergency Contact'],
-  'review'     => ['title' => 'Review & Submit'],
-];
-
-// --- URL PARAMETERS ---
-$application_type = $_GET['type'] ?? 'New';
-$current_program  = $_GET['program'] ?? 'default';
-$current_section  = $_GET['section'] ?? null;
-
-// --- Save Session Data ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
-  $_SESSION['form_data'] = array_merge($_SESSION['form_data'] ?? [], $_POST);
-  header("Location: " . $_SERVER['REQUEST_URI']);
-  exit;
+// HELPER: CENTRALIZED REDIRECT LOGIC
+function redirectUser() {
+    $user = Auth::getUser(); // Get full user details including role
+    
+    // 1. ADMINS & DUAL ROLES -> Go to Admin Dashboard
+    if ($user['role'] === 'admin' || $user['role'] === 'both') {
+        header("Location: pages/adminDashboard.php");
+    } 
+    // 2. ALUMNI -> Go to Central Alumni Landing Page
+    else {
+        // Directs to the new gatekeeper page
+        header("Location: pages/alumniLanding.php"); 
+    }
+    exit;
 }
 
-// --- Routing Logic ---
-$file_map = [
-  'alumni' => 'pages/alumniInfo.php',
-  'education' => 'pages/educationalBackground.php',
-  'employment' => 'pages/employmentRecord.php',
-  'emergency' => 'pages/emergencyContact.php',
-  'review' => 'pages/reviewSubmit.php',
-];
-$file_to_include = $file_map[$current_section] ?? '';
+// IF ALREADY LOGGED IN:
+if (Auth::isLoggedIn()) {
+    redirectUser();
+}
 
-$section_keys = array_keys($sections);
-$current_step = $current_section ? array_search($current_section, $section_keys) + 1 : 0;
-$total_steps = count($section_keys);
+$message = "";
 
-$body_class = ($current_program === 'ccs') ? 'ccs-program-bg' : 'default-program-bg';
+// HANDLE LOGIN FORM
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $email = trim($_POST['email'] ?? "");
+    $password = trim($_POST['password'] ?? "");
+
+    if (Auth::login($email, $password)) {
+        redirectUser(); // Use the same logic after fresh login
+    } else {
+        $message = "Invalid email or password.";
+    }
+}
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alumni Directory System</title>
-  <link rel="stylesheet" href="assets/css/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - WMSU Alumni</title>
+    <link rel="stylesheet" href="assets/css/index.css"> 
+    <style>
+        /* Default Background Setup */
+        .left-pane {
+            background-image: 
+                linear-gradient(to top, rgba(139, 0, 0, 0.9) 0%, rgba(139, 0, 0, 0.1) 100%),
+                url('assets/images/default-bg.jpg');
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Right Pane Texture */
+        .right-pane {
+            background-color: #f8f9fa; 
+            background-image: radial-gradient(#e9ecef 1px, transparent 1px);
+            background-size: 20px 20px; 
+        }
+
+        /* Full Red Border */
+        .login-box { border: 3px solid #b30000; }
+    </style>
 </head>
-<body class="<?php echo $body_class; ?>">
-<div class="mainContainer">
-  <!-- HEADER -->
-  <header class="header-content">
-    <div class="logo-area">
-      <img src="assets/images/logo1.png" alt="University Logo" class="logo">
-      <img src="assets/images/logo2.png" alt="Program Logo" class="logo">
-    </div>
+<body>
 
-    <div class="banner-text">
-      <div class="university-title-block">
-        <p class="university-line">Western Mindanao State University</p>
-        
-        <!-- ✅ Clickable Alumni Relation Office that redirects to admin login -->
-        <p class="office-line" style="cursor:pointer; color:#007bff;" onclick="goToAdmin()">
-          ALUMNI RELATION OFFICE
-        </p>
-        
-        <p class="city-line">Zamboanga City</p>
-      </div>
-    </div>
+    <div class="split-container">
+        <div class="left-pane" id="bg-pane"></div>
 
-    <div class="right-header-block">
-      <?php if ($current_section): ?>
-        <a href="functions/clearSession.php" 
-           class="back-link-img"
-           onclick="return confirm('Go back to the Landing Page? The form will not be saved unless you submit it.');">
-          <img src="assets/images/back.png" alt="Back" class="back-icon">
-        </a>
-      <?php else: ?>
-        <div class="program-selector">
-          <div class="program-label-group">
-            <label for="program-select">Program:</label>
-            <select id="program-select" onchange="updateProgram(this.value)">
-              <option value="default" <?= ($current_program === 'default') ? 'selected' : '' ?>>Select Program</option>
-              <option value="ccs" <?= ($current_program === 'ccs') ? 'selected' : '' ?>>CCS</option>
-            </select>
-          </div>
+        <div class="right-pane">
+            <div class="login-box">
+                <img src="assets/images/logo1.png" alt="WMSU Logo" class="logo">
+                
+                <h1>Alumni Portal</h1>
+                <div class="title-underline"></div>
+                
+                <p class="subtitle">Welcome! Please sign in to your account.</p>
+
+                <?php if ($message): ?>
+                    <div style="background:#ffe3e3; color:#b30000; padding:12px; border-radius:5px; margin-bottom:20px; font-size:0.9em; border-left: 4px solid #b30000; text-align: left;">
+                        <?= htmlspecialchars($message) ?>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST">
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" name="email" required placeholder="name@email.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" name="password" id="password" required placeholder="Enter your password" style="padding-right: 45px;">
+                            <button type="button" class="toggle-password" onclick="togglePassword()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#6c757d;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-continue">Sign In</button>
+                </form>
+
+                <div class="footer-link">
+                    <div style="margin-bottom:10px;">
+                        <a href="pages/auth/forgotPassword.php">Forgot Password?</a>
+                    </div>
+                    <div>
+                        New Alumni? <a href="pages/auth/college.php" style="font-weight:800;">Create Account</a>
+                    </div>
+                </div>
+
+            </div>
         </div>
-      <?php endif; ?>
-    </div>
-  </header>
-
-  <!-- LANDING PAGE -->
-  <?php if (!$current_section): ?>
-    <h1 class="main-title">Alumni Information Form</h1>
-    <div class="application-type-selector">
-      <button class="type-button selected" data-type="new">NEW</button>
-      <button class="type-button" data-type="renewal">RENEWAL</button>
-    </div>
-    <p class="instruction-line">Choose NEW for your first registration or RENEWAL if you are updating an existing record.</p>
-  <?php endif; ?>
-
-  <!-- SECTION FORMS -->
-  <?php if ($current_section): ?>
-    <h1 class="main-title"><?php echo htmlspecialchars($sections[$current_section]['title']); ?></h1>
-    <div class="progression-bar-container">
-      <span class="progression-text">Step <?php echo $current_step; ?>/<?php echo $total_steps; ?></span>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: <?php echo ($current_step / $total_steps) * 100; ?>%;"></div>
-      </div>
     </div>
 
-    <nav class="section-nav">
-      <?php foreach ($section_keys as $section_name): ?>
-        <a href="index.php?section=<?php echo $section_name; ?>&program=<?php echo $current_program; ?>&type=<?php echo $application_type; ?>"
-           class="<?php echo ($section_name === $current_section) ? 'nav-link active' : 'nav-link'; ?>">
-          <?php echo $sections[$section_name]['title']; ?>
-        </a>
-      <?php endforeach; ?>
-    </nav>
-
-    <div class="section-forms-container">
-      <?php include($file_to_include); ?>
-    </div>
-  <?php endif; ?>
-</div>
-
-<script>
-function updateProgram(value){
-  window.location.href = `index.php?program=${value}`;
-}
-
-document.querySelectorAll('.type-button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const type = btn.dataset.type;
-    const prog = document.getElementById('program-select').value;
-    if(prog === 'default') return alert('Please select a program first.');
-
-    if(type === 'renewal') {
-      // Redirect to the verification page first
-      window.location.href = `pages/renewalVerification.php?program=${prog}`;
-    } else {
-      // Normal new application
-      window.location.href = `index.php?section=alumni&program=${prog}&type=New`;
-    }
-  });
-});
-
-// ✅ Redirect function for ALUMNI RELATION OFFICE
-function goToAdmin() {
-  window.location.href = "pages/adminLogin.php";
-}
-if(type === 'renewal') {
-  // Redirect to the verification page first
-  window.location.href = `pages/renewalVerification.php?program=${prog}`;
-} else {
-  // Normal new application
-  window.location.href = `index.php?section=alumni&program=${prog}&type=New`;
-}
-
-</script>
+    <script>
+        function togglePassword() {
+            const pass = document.getElementById('password');
+            pass.type = pass.type === 'password' ? 'text' : 'password';
+        }
+    </script>
 
 </body>
 </html>

@@ -1,4 +1,5 @@
 <?php
+// File: config.php
 // ======================================================
 // Global System Configuration
 // ======================================================
@@ -19,18 +20,22 @@ define('BASE_URL', '/cssAlumniDirectorySystem');
 // SMTP CONFIG (GMAIL APP PASSWORD REQUIRED) -------------
 define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
+
+// ✅ REVERTED TO ORIGINAL CREDENTIALS (OPTION B)
 define('SMTP_USERNAME', 'mathewpayopelin.payo.dev@gmail.com');
-define('SMTP_PASSWORD', 'csmz bhta oltn ctik');
+define('SMTP_PASSWORD', 'csmz bhta oltn ctik'); // Matches the email above
 define('SMTP_FROM_EMAIL', 'mathewpayopelin.payo.dev@gmail.com');
 define('SMTP_FROM_NAME', 'WMSU Alumni Office');
 
-// Helper redirect
+// ======================================================
+// HELPER FUNCTIONS
+// ======================================================
+
 function redirect($path) {
     header("Location: " . BASE_URL . $path);
     exit();
 }
 
-// GLOBAL PDO (optional)
 try {
     $pdo = new PDO(
         "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
